@@ -1,5 +1,5 @@
 # coding=utf-8
-from flask import Flask, render_template, session, redirect, url_for
+from flask import Flask, render_template, session, redirect, url_for, flash
 # 引入Bootstrap模板
 from flask.ext.bootstrap import Bootstrap
 # 使用flask-Moment本地化日期和时间，引入 moment.js 库
@@ -27,6 +27,10 @@ def index():
     form = NameForm()
     # validate_on_submit函数验证是否登录
     if form.validate_on_submit():
+        # flash消息，提示用户密码错误，在base模板中渲染
+        old_name = session.get('name')
+        if old_name is not None and old_name != form.name.data:
+            flash('look like you have changed your name!')
         # 使用session保存输入的数据
         session['name'] = form.name.data
         # 重定向函数index （Post/ 重定向 /Get 模式）
