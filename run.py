@@ -7,11 +7,17 @@ from flask.ext.moment import Moment
 from datetime import datetime
 # 引入表单
 from flask.ext.wtf import Form
-from wtforms import StringField, SubmitField
+from wtforms import StringField, SubmitField, FileField, SelectField, TextAreaField, PasswordField
 from wtforms.validators import Required
 # 配置sqlite数据库
 import os
 from flask.ext.sqlalchemy import SQLAlchemy
+# 使用Flask-Migrate实现数据库迁移
+from flask.ext.migrate import Migrate, MigrateCommand
+# 发送电子邮件功能
+from flask.ext.mail import Message, Mail
+# 异步发送邮件
+from threading import Thread
 
 # 获取文件当前目录
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -30,6 +36,28 @@ db = SQLAlchemy(app)
 bootstrap = Bootstrap(app)
 # 初始化Moment
 moment = Moment(app)
+# 邮件支持
+mail = Mail(app)
+app.config['FLASKY_MAIL_SUBJECT_PREFIX'] = '[Flasky]'
+app.config['FLASKY_MAIL_SENDER'] = 'Flasky Admin <flasky@example.com>'
+
+
+# 异步发送
+def send_async_email(app, msg):
+    with app.app_context():
+        mail.send(msg)
+
+
+def send_email(to, subject, template, **kwargs):
+    msg = Message(app.config['FLASKY_MAIL_SUBJECT_PREFIX'] + subject,
+                  sender=app.config['FLASKY_MAIL_SENDER'], recipients=[to])
+    msg.body = render_template(template + '.txt', **kwargs)
+    msg.html = render_template(template + '.html', **kwargs)
+    # 调用线程发送，移到后台
+    thr = Thread(target=send_async_email, args=[app, msg])
+    thr.start()
+    return thr
+    # mail.send(msg)
 
 
 # 重定向和用户会话
@@ -46,6 +74,10 @@ def index():
             db.session.add(user)
             # 变量 known 被写入用户会话中，因此重定向之后，可以把数据传给模板，用来显示自定义的欢迎消息。
             session['known'] = False
+            # 电子邮件发送处理
+            if app.config['FLASK_ADMIN']:
+                send_email(app.config['FLASK_ADMIN'], 'New User',
+                           'mail/new_user', user=user)
         else:
             session['known'] = True
         # 使用session保存输入的数据
@@ -62,10 +94,49 @@ def index():
                            )
 
 
+# file upload
+@app.route('/file', methods=['GET', 'POST'])
+def file():
+    filename = None;
+    form = FileForm()
+    if form.validate_on_submit():
+        filename = form.filename.data
+        form.filename.data = ''
+    return render_template('file.html', form=form, filename=filename)
+
+
+# select
+@app.route('/select', methods=['GET', 'POST'])
+def select():
+    selectname = None;
+    form = SelectForm()
+    if form.validate_on_submit():
+        selectname = form.selectname.data
+        form.selectname.data = ''
+    return render_template('select.html', form=form, selectname=selectname)
+
+
+# textarea
+@app.route('/textarea', methods=['GET', 'POST'])
+def text():
+    textarea = None;
+    form = TextArea()
+    if form.validate_on_submit():
+        textarea = form.textarea.data
+        form.textarea.data = ''
+    return render_template('textarea.html', form=form, textarea=textarea)
+
+
 # user路由
 @app.route('/user/<name>')
 def user(name):
     return render_template('user.html', name=name)
+
+
+# 内网url
+@app.route('/url')
+def url():
+    return render_template('url.html')
 
 
 # 自定义404页面
@@ -74,9 +145,29 @@ def page_not_found(e):
     return render_template('404.html'), 404
 
 
+@app.errorhandler(405)
+def method_not_allowed(e):
+    return render_template('405.html'), 405
+
+
 # user表单类
 class NameForm(Form):
     name = StringField('What is your name?', validators=[Required()])
+    submit = SubmitField('Submit')
+
+
+class FileForm(Form):
+    filename = FileField('Please select file name:', validators=[Required()])
+    submit = SubmitField('Submit')
+
+
+class SelectForm(Form):
+    selectname = SelectField('select:', validators=[Required()])
+    submit = SubmitField('Submit')
+
+
+class TextArea(Form):
+    textarea = TextAreaField('this is textarea!', validators=[Required()])
     submit = SubmitField('Submit')
 
 
